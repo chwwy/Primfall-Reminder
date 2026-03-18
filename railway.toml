@@ -4,6 +4,12 @@ builder = "NIXPACKS"
 [env]
 NIXPACKS_NODE_VERSION = "20"
 
+[phases.setup]
+aptPkgs = ["python3", "build-essential"]
+
+[phases.install]
+cmds = ["npm ci", "npm install better-sqlite3 --verbose", "npm rebuild better-sqlite3"]
+
 [deploy]
 startCommand = "node index.js"
 restartPolicyType = "ON_FAILURE"
