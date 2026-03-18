@@ -1,13 +1,15 @@
 const BOSSES = {
-  'Aero-Forge':       'world_boss',
-  'Doomcaller':       'world_boss',
-  'Draconarch':       'world_boss',
   'Kraken':           'world_boss',
-  'Seraphiel':        'world_boss',
   'Titanseal':        'world_boss',
+  'Aero-Forge':       'world_boss',
+  'Draconarch':       'world_boss',
+  'Doomcaller':       'world_boss',
   "Vel'khurath":      'world_boss',
+  'Seraphiel':        'world_boss',
   'Zenith Conquest':  'zenith',
 };
+
+const BOSS_ORDER = Object.keys(BOSSES);
 
 const GAME_CHANNELS = ['1', '2', '4'];
 
@@ -20,4 +22,4 @@ const TIMEZONE_MAP = {
   PT: 'America/Los_Angeles',
 };
 
-module.exports = { BOSSES, GAME_CHANNELS, THEME_COLOR, TIMEZONE_MAP };
+module.exports = { BOSSES, BOSS_ORDER, GAME_CHANNELS, THEME_COLOR, TIMEZONE_MAP };

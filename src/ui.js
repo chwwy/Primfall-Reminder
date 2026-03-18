@@ -3,7 +3,7 @@ const {
   StringSelectMenuBuilder, AttachmentBuilder,
 } = require('discord.js');
 const { db } = require('./database');
-const { BOSSES, GAME_CHANNELS, THEME_COLOR } = require('./config');
+const { BOSSES, BOSS_ORDER, GAME_CHANNELS, THEME_COLOR } = require('./config');
 
 // ── Helpers ─────────────────────────────────────────────────────────────────────
 
@@ -72,7 +72,7 @@ async function renderStatusEmbed(guildId, bossName, client) {
 }
 
 async function renderAllStatusEmbeds(guildId, client) {
-  for (const name of Object.keys(BOSSES)) {
+  for (const name of BOSS_ORDER) {
     await renderStatusEmbed(guildId, name, client);
   }
 }
