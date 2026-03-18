@@ -80,7 +80,7 @@ async function getOrCreateRole(guild) {
   if (!role) {
     role = await guild.roles.create({
       name: 'Boss Reminder',
-      colors: 0xFF0000,
+      color: 0xFF0000,
       reason: 'Auto-created by Primfall Reminder for boss notifications',
     });
   }
