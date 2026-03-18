@@ -3,100 +3,97 @@ const { db, getOrCreateRole } = require('./database');
 const { renderStatusEmbed } = require('./ui');
 const { BOSSES } = require('./config');
 
-async function processAlertCleanups(client) {
-    const now = Date.now();
-    const expired = db.prepare('SELECT * FROM alert_messages WHERE delete_at_utc <= ?').all(now);
+// ── Alert Cleanup ───────────────────────────────────────────────────────────────
 
-    for (const msg of expired) {
-        try {
-            const guild = await client.guilds.fetch(msg.guild_id).catch(() => null);
-            if (guild) {
-                const channel = await guild.channels.fetch(msg.channel_id).catch(() => null);
-                if (channel) {
-                    const fetchedMsg = await channel.messages.fetch(msg.message_id).catch(() => null);
-                    if (fetchedMsg) {
-                        await fetchedMsg.delete();
-                    }
-                }
-            }
-        } catch (err) {
-            console.error(`Failed to cleanup alert message ${msg.message_id}:`, err);
-        } finally {
-            db.prepare('DELETE FROM alert_messages WHERE id = ?').run(msg.id);
-        }
+async function cleanupExpiredAlerts(client) {
+  const now = Date.now();
+  const expired = db.prepare('SELECT * FROM alert_messages WHERE delete_at_utc <= ?').all(now);
+
+  for (const row of expired) {
+    try {
+      const guild   = await client.guilds.fetch(row.guild_id).catch(() => null);
+      const channel = guild && await guild.channels.fetch(row.channel_id).catch(() => null);
+      const message = channel && await channel.messages.fetch(row.message_id).catch(() => null);
+      if (message) await message.delete();
+    } catch (_) {
+      // message already gone — ignore
+    } finally {
+      db.prepare('DELETE FROM alert_messages WHERE id = ?').run(row.id);
     }
+  }
 }
 
-async function checkTimers(client) {
-    await processAlertCleanups(client);
+// ── Timer Tick ──────────────────────────────────────────────────────────────────
 
-    const now = Date.now();
-    const timers = db.prepare('SELECT * FROM boss_timers WHERE enabled = 1 AND (next_spawn_utc IS NOT NULL OR override_utc IS NOT NULL)').all();
-    
-    for (const t of timers) {
-        const targetMs = t.override_utc || t.next_spawn_utc;
-        if (!targetMs) continue;
+async function tick(client) {
+  await cleanupExpiredAlerts(client);
 
-        const settings = db.prepare('SELECT * FROM server_settings WHERE guild_id = ?').get(t.guild_id);
-        if (!settings || !settings.status_channel_id) continue;
+  const now = Date.now();
+  const active = db.prepare(
+    'SELECT * FROM boss_timers WHERE enabled = 1 AND (next_spawn_utc IS NOT NULL OR override_utc IS NOT NULL)'
+  ).all();
 
-        try {
-            const guild = await client.guilds.fetch(t.guild_id).catch(()=>null);
-            if (!guild) continue;
-            
-            const role = await getOrCreateRole(guild);
-            const bossCat = BOSSES[t.boss_name];
-            const channel = await guild.channels.fetch(settings.status_channel_id).catch(()=>null);
-            if (!channel) continue;
+  for (const timer of active) {
+    const target = timer.override_utc || timer.next_spawn_utc;
+    if (!target) continue;
 
-            const reminderMin = settings.reminder_minutes || 0;
-            const reminderMs = targetMs - (reminderMin * 60 * 1000);
-            
-            // Check pre-spawn reminder
-            if (reminderMin > 0 && now >= reminderMs && now < targetMs && t.reminder_sent === 0) {
-                const embed = new EmbedBuilder()
-                    .setTitle(`⏳ ${t.boss_name} Spawns in ${reminderMin} minutes! ⏳`)
-                    .setDescription(`Attention <@&${role.id}>!\nThe ${bossCat === 'world_boss' ? 'World Boss' : 'Event'} **${t.boss_name}** will spawn on **Channel ${t.game_channel}** in ${reminderMin} minutes!`)
-                    .setColor('#FFA500');
+    const settings = db.prepare('SELECT * FROM server_settings WHERE guild_id = ?').get(timer.guild_id);
+    if (!settings?.status_channel_id) continue;
 
-                const alertMsg = await channel.send({ content: `<@&${role.id}>`, embeds: [embed] });
-                db.prepare('UPDATE boss_timers SET reminder_sent = 1 WHERE id = ?').run(t.id);
+    try {
+      const guild   = await client.guilds.fetch(timer.guild_id).catch(() => null);
+      if (!guild) continue;
+      const channel = await guild.channels.fetch(settings.status_channel_id).catch(() => null);
+      if (!channel) continue;
+      const role    = await getOrCreateRole(guild);
 
-                if (settings.alert_cleanup_minutes > 0) {
-                    const deleteAt = now + (settings.alert_cleanup_minutes * 60 * 1000);
-                    db.prepare('INSERT INTO alert_messages (guild_id, channel_id, message_id, delete_at_utc) VALUES (?, ?, ?, ?)').run(t.guild_id, channel.id, alertMsg.id, deleteAt);
-                }
-            }
+      const category = BOSSES[timer.boss_name];
+      const label    = category === 'world_boss' ? 'World Boss' : 'Event';
 
-            // Check actual spawn
-            if (now >= targetMs) {
-                const embed = new EmbedBuilder()
-                    .setTitle(`🚨 ${t.boss_name} SPAWNING NOW! 🚨`)
-                    .setDescription(`Attention <@&${role.id}>!\nThe ${bossCat === 'world_boss' ? 'World Boss' : 'Event'} **${t.boss_name}** is spawning on **Channel ${t.game_channel}**!`)
-                    .setColor('#FF0000');
+      // Pre-spawn reminder
+      const reminderMs = settings.reminder_minutes * 60_000;
+      if (reminderMs > 0 && now >= target - reminderMs && now < target && !timer.reminder_sent) {
+        const embed = new EmbedBuilder()
+          .setTitle(`⏳  ${timer.boss_name} — ${settings.reminder_minutes} min warning`)
+          .setDescription(`<@&${role.id}>\n${label} **${timer.boss_name}** spawns on **Channel ${timer.game_channel}** soon.`)
+          .setColor(0xFFA500);
 
-                const alertMsg = await channel.send({ content: `<@&${role.id}>`, embeds: [embed] });
+        const sent = await channel.send({ content: `<@&${role.id}>`, embeds: [embed] });
+        db.prepare('UPDATE boss_timers SET reminder_sent = 1 WHERE id = ?').run(timer.id);
+        scheduleCleanup(settings, timer.guild_id, channel.id, sent.id, now);
+      }
 
-                if (settings.alert_cleanup_minutes > 0) {
-                    const deleteAt = now + (settings.alert_cleanup_minutes * 60 * 1000);
-                    db.prepare('INSERT INTO alert_messages (guild_id, channel_id, message_id, delete_at_utc) VALUES (?, ?, ?, ?)').run(t.guild_id, channel.id, alertMsg.id, deleteAt);
-                }
+      // Spawn
+      if (now >= target) {
+        const embed = new EmbedBuilder()
+          .setTitle(`🚨  ${timer.boss_name} — SPAWNING NOW`)
+          .setDescription(`<@&${role.id}>\n${label} **${timer.boss_name}** is live on **Channel ${timer.game_channel}**!`)
+          .setColor(0xFF0000);
 
-                db.prepare('UPDATE boss_timers SET override_utc = NULL, last_spawn_utc = ?, reminder_sent = 0 WHERE id = ?').run(now, t.id);
+        const sent = await channel.send({ content: `<@&${role.id}>`, embeds: [embed] });
+        scheduleCleanup(settings, timer.guild_id, channel.id, sent.id, now);
 
-                if (t.interval_ms) {
-                    db.prepare('UPDATE boss_timers SET next_spawn_utc = ? WHERE id = ?').run(now + t.interval_ms, t.id);
-                } else {
-                    db.prepare('UPDATE boss_timers SET next_spawn_utc = NULL WHERE id = ?').run(t.id);
-                }
-                
-                await renderStatusEmbed(t.guild_id, t.boss_name, client);
-            }
-            
-        } catch (err) {
-            console.error(`Failed to process spawn/reminder for ${t.boss_name} Channel ${t.game_channel}`, err);
+        db.prepare('UPDATE boss_timers SET override_utc = NULL, last_spawn_utc = ?, reminder_sent = 0 WHERE id = ?').run(now, timer.id);
+
+        if (timer.interval_ms) {
+          db.prepare('UPDATE boss_timers SET next_spawn_utc = ? WHERE id = ?').run(now + timer.interval_ms, timer.id);
+        } else {
+          db.prepare('UPDATE boss_timers SET next_spawn_utc = NULL WHERE id = ?').run(timer.id);
         }
+
+        await renderStatusEmbed(timer.guild_id, timer.boss_name, client);
+      }
+    } catch (err) {
+      console.error(`[timers] ${timer.boss_name} Ch${timer.game_channel}:`, err.message);
     }
+  }
 }
 
-module.exports = { checkTimers };
+function scheduleCleanup(settings, guildId, channelId, messageId, now) {
+  if (settings.alert_cleanup_minutes > 0) {
+    const deleteAt = now + settings.alert_cleanup_minutes * 60_000;
+    db.prepare('INSERT INTO alert_messages (guild_id, channel_id, message_id, delete_at_utc) VALUES (?, ?, ?, ?)').run(guildId, channelId, messageId, deleteAt);
+  }
+}
+
+module.exports = { tick };

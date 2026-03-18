@@ -1,61 +1,50 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, Partials } = require('discord.js');
 const { db } = require('./src/database');
-const { registerSlashCommands } = require('./src/slash');
-const { handleCommand, handleButton, handleSelectMenu, handleModalSubmit } = require('./src/handlers');
-const { checkTimers } = require('./src/timers');
+const { registerCommands } = require('./src/commands');
+const { onCommand, onButton, onSelectMenu, onModalSubmit } = require('./src/handlers');
+const { tick } = require('./src/timers');
 const { renderAllStatusEmbeds, updateControlPanels } = require('./src/ui');
 
-// Ensure token is present
 if (!process.env.DISCORD_TOKEN) {
-    console.error("FATAL ERROR: DISCORD_TOKEN is missing or undefined from environment variables!");
-    console.error("Please add it to your .env file or your provider's secrets panel.");
-    process.exit(1);
+  console.error('DISCORD_TOKEN is not set. Add it to .env or your host\'s secrets.');
+  process.exit(1);
 }
 
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildMembers
-    ],
-    partials: [Partials.Message, Partials.Channel, Partials.GuildMember]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMembers],
+  partials: [Partials.Message, Partials.Channel, Partials.GuildMember],
 });
 
 client.once('ready', async () => {
-    console.log(`Logged in as ${client.user.tag}`);
-    await registerSlashCommands();
-    
-    // Restore persistent messages on startup
-    const guilds = db.prepare('SELECT guild_id FROM server_settings').all();
-    for (const g of guilds) {
-        await updateControlPanels(g.guild_id, client);
-        await renderAllStatusEmbeds(g.guild_id, client);
-    }
+  console.log(`[bot] Online as ${client.user.tag}`);
+  await registerCommands();
 
-    await checkTimers(client); // Start intervals
-    setInterval(() => checkTimers(client), 60 * 1000); // Check every minute
+  // Restore persistent panels for every configured guild
+  const guilds = db.prepare('SELECT guild_id FROM server_settings').all();
+  for (const { guild_id } of guilds) {
+    await updateControlPanels(guild_id, client);
+    await renderAllStatusEmbeds(guild_id, client);
+  }
+
+  // Start the timer loop
+  await tick(client);
+  setInterval(() => tick(client), 60_000);
 });
 
-client.on('interactionCreate', async interaction => {
-    try {
-        if (interaction.isChatInputCommand()) {
-            await handleCommand(interaction);
-        } else if (interaction.isButton()) {
-            await handleButton(interaction);
-        } else if (interaction.isStringSelectMenu()) {
-            await handleSelectMenu(interaction);
-        } else if (interaction.isModalSubmit()) {
-            await handleModalSubmit(interaction);
-        }
-    } catch (err) {
-        console.error("Interaction error:", err);
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({ content: 'An error occurred while executing this component.', ephemeral: true }).catch(()=>{});
-        } else {
-            await interaction.reply({ content: 'An error occurred while executing this component.', ephemeral: true }).catch(()=>{});
-        }
-    }
+client.on('interactionCreate', async (interaction) => {
+  try {
+    if (interaction.isChatInputCommand()) return onCommand(interaction);
+    if (interaction.isButton())           return onButton(interaction);
+    if (interaction.isStringSelectMenu()) return onSelectMenu(interaction);
+    if (interaction.isModalSubmit())       return onModalSubmit(interaction);
+  } catch (err) {
+    console.error('[interaction]', err);
+    const reply = { content: 'Something went wrong.', ephemeral: true };
+    (interaction.replied || interaction.deferred)
+      ? interaction.followUp(reply).catch(() => {})
+      : interaction.reply(reply).catch(() => {});
+  }
 });
 
 client.login(process.env.DISCORD_TOKEN);

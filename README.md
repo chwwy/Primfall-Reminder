@@ -1,35 +1,42 @@
-# Quinfall Boss Reminder Bot
+# Primfall Reminder
 
-This is a Discord bot built with Node.js and discord.js v14. It uses better-sqlite3 to store application state.
+Discord bot for tracking Quinfall world boss and Zenith Conquest spawn timers. Pings a configurable role when spawns are imminent or happening.
 
-## Setup Instructions
+## Features
 
-1.  **Clone the repository** (or download the code).
-2.  **Install dependencies**:
-    \`\`\`bash
-    npm install
-    \`\`\`
-3.  **Environment Variables**: Create a \`.env\` file in the root directory (or use variables on your Railway dashboard):
-    \`\`\`env
-    DISCORD_TOKEN=your_bot_token_here
-    CLIENT_ID=your_bot_client_id_here
-    GUILD_ID=your_development_server_id (optional, forces quick command registration for dev)
-    \`\`\`
+- Tracks 7 world bosses + Zenith Conquest across game channels 1, 2, and 4
+- Repeating interval timers and one-time spawn overrides (24h military time)
+- Pre-spawn reminders (configurable minutes before spawn)
+- Auto-cleanup of alert messages after a set duration
+- Persistent control panels — settings and timer management live in-channel 24/7
+- Per-server isolation — works across multiple Discord guilds independently
 
-## Running Locally
+## Setup
 
-Run:
-\`\`\`bash
-node index.js
-\`\`\`
-The bot will connect to \`database.sqlite\` in the root directory by default.
+1. Copy `.env.example` to `.env` and fill in your bot token and client ID
+2. `npm install`
+3. `node index.js`
+4. Run `/setup` in your Discord server to assign channels
 
-## Deployment on Railway
+## Project Structure
 
-1. Provide the \`DISCORD_TOKEN\` and \`CLIENT_ID\` in Railway's Variables section.
-2. Under your Railway service **Volumes**, add a volume with the mount path \`/app/data\`.
-3. The codebase comes natively with a \`railway.toml\` to configure the NIXPACKS build correctly and start up the bot immediately via \`node index.js\`.
+```
+index.js            Entry point
+src/
+  config.js         Boss list, game channels, theme color, timezone map
+  database.js       SQLite schema, seeding, role helper
+  commands.js       Slash command registration
+  handlers.js       Interaction routing (commands, buttons, menus, modals)
+  timers.js         Spawn checking loop and alert cleanup
+  ui.js             Status embeds and control panel rendering
+assets/bosses/      Boss thumbnail images (lowercase-hyphenated.png)
+```
 
-## Using the Bot
+## Deployment (Railway)
 
-As a user with **Manage Server** permissions, run \`/setup\` in your Discord server. Designate the relevant channels when prompted. The bot will deploy persistent embeds automatically. Next, use \`/setboss\` to configure spawn intervals, and use the Control Panel to start tracking!
+1. Push to GitHub
+2. Create a Railway project from the repo
+3. Add `DISCORD_TOKEN` and `CLIENT_ID` as variables
+4. Add a volume mounted at `/app/data` for database persistence
+
+The included `railway.toml` handles build configuration automatically.
