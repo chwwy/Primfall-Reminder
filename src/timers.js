@@ -53,24 +53,19 @@ async function tick(client) {
       // Pre-spawn reminder
       const reminderMs = settings.reminder_minutes * 60_000;
       if (reminderMs > 0 && now >= target - reminderMs && now < target && !timer.reminder_sent) {
-        const embed = new EmbedBuilder()
-          .setTitle(`⏳  ${timer.boss_name} — ${settings.reminder_minutes} min warning`)
-          .setDescription(`<@&${role.id}>\n${label} **${timer.boss_name}** spawns on **Channel ${timer.game_channel}** soon.`)
-          .setColor(0xFFA500);
+        const timestamp = `<t:${Math.floor(target / 1000)}:R>`;
+        const content = `⚠️ **${timer.boss_name} ${timer.game_channel}** is spawning **${timestamp}**! <@&${role.id}>`;
 
-        const sent = await channel.send({ content: `<@&${role.id}>`, embeds: [embed] });
+        const sent = await channel.send(content);
         db.prepare('UPDATE boss_timers SET reminder_sent = 1 WHERE id = ?').run(timer.id);
         scheduleCleanup(settings, timer.guild_id, channel.id, sent.id, now);
       }
 
       // Spawn
       if (now >= target) {
-        const embed = new EmbedBuilder()
-          .setTitle(`🚨  ${timer.boss_name} — SPAWNING NOW`)
-          .setDescription(`<@&${role.id}>\n${label} **${timer.boss_name}** is live on **Channel ${timer.game_channel}**!`)
-          .setColor(0xFF0000);
+        const content = `🚨 **${timer.boss_name} ${timer.game_channel}** is spawning **NOW**! <@&${role.id}>`;
 
-        const sent = await channel.send({ content: `<@&${role.id}>`, embeds: [embed] });
+        const sent = await channel.send(content);
         scheduleCleanup(settings, timer.guild_id, channel.id, sent.id, now);
 
         db.prepare('UPDATE boss_timers SET override_utc = NULL, last_spawn_utc = ?, reminder_sent = 0 WHERE id = ?').run(now, timer.id);
