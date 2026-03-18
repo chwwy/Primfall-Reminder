@@ -1,7 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
 const { db, getOrCreateRole } = require('./database');
 const { renderStatusEmbed } = require('./ui');
-const { BOSSES } = require('./config');
+
 
 // ── Alert Cleanup ───────────────────────────────────────────────────────────────
 
@@ -33,6 +33,8 @@ async function tick(client) {
     'SELECT * FROM boss_timers WHERE enabled = 1 AND (next_spawn_utc IS NOT NULL OR override_utc IS NOT NULL)'
   ).all();
 
+  const pendingActions = {};
+
   for (const timer of active) {
     const target = timer.override_utc || timer.next_spawn_utc;
     if (!target) continue;
@@ -40,46 +42,73 @@ async function tick(client) {
     const settings = db.prepare('SELECT * FROM server_settings WHERE guild_id = ?').get(timer.guild_id);
     if (!settings?.status_channel_id) continue;
 
+    const reminderMs = settings.reminder_minutes * 60_000;
+    let type = null;
+
+    if (now >= target) {
+      type = 'spawn';
+    } else if (reminderMs > 0 && now >= target - reminderMs && now < target && !timer.reminder_sent) {
+      type = 'reminder';
+    }
+
+    if (!type) continue;
+
+    const key = `${timer.guild_id}_${timer.boss_name}_${target}_${type}`;
+    if (!pendingActions[key]) {
+      pendingActions[key] = {
+        guildId: timer.guild_id,
+        bossName: timer.boss_name,
+        target,
+        type,
+        settings,
+        channels: [],
+        timers: []
+      };
+    }
+    pendingActions[key].channels.push(timer.game_channel);
+    pendingActions[key].timers.push(timer);
+  }
+
+  for (const group of Object.values(pendingActions)) {
     try {
-      const guild   = await client.guilds.fetch(timer.guild_id).catch(() => null);
+      const guild = await client.guilds.fetch(group.guildId).catch(() => null);
       if (!guild) continue;
-      const channel = await guild.channels.fetch(settings.status_channel_id).catch(() => null);
+      const channel = await guild.channels.fetch(group.settings.status_channel_id).catch(() => null);
       if (!channel) continue;
-      const role    = await getOrCreateRole(guild);
+      const role = await getOrCreateRole(guild);
 
-      const category = BOSSES[timer.boss_name];
-      const label    = category === 'world_boss' ? 'World Boss' : 'Event';
+      // Sort channels so they appear nicely like "1, 2, 4"
+      group.channels.sort((a, b) => a.localeCompare(b));
+      const channelsLabel = group.channels.length > 1 ? `Ch ${group.channels.join(', ')}` : `Ch ${group.channels[0]}`;
 
-      // Pre-spawn reminder
-      const reminderMs = settings.reminder_minutes * 60_000;
-      if (reminderMs > 0 && now >= target - reminderMs && now < target && !timer.reminder_sent) {
-        const timestamp = `<t:${Math.floor(target / 1000)}:R>`;
-        const content = `⚠️ **${timer.boss_name} ${timer.game_channel}** is spawning **${timestamp}**! <@&${role.id}>`;
-
-        const sent = await channel.send(content);
-        db.prepare('UPDATE boss_timers SET reminder_sent = 1 WHERE id = ?').run(timer.id);
-        scheduleCleanup(settings, timer.guild_id, channel.id, sent.id, now);
-      }
-
-      // Spawn
-      if (now >= target) {
-        const content = `🚨 **${timer.boss_name} ${timer.game_channel}** is spawning **NOW**! <@&${role.id}>`;
+      if (group.type === 'reminder') {
+        const timestamp = `<t:${Math.floor(group.target / 1000)}:R>`;
+        const content = `⚠️ **${group.bossName}** ${channelsLabel} is spawning **${timestamp}**! <@&${role.id}>`;
 
         const sent = await channel.send(content);
-        scheduleCleanup(settings, timer.guild_id, channel.id, sent.id, now);
+        scheduleCleanup(group.settings, group.guildId, channel.id, sent.id, now);
 
-        db.prepare('UPDATE boss_timers SET override_utc = NULL, last_spawn_utc = ?, reminder_sent = 0 WHERE id = ?').run(now, timer.id);
-
-        if (timer.interval_ms) {
-          db.prepare('UPDATE boss_timers SET next_spawn_utc = ? WHERE id = ?').run(now + timer.interval_ms, timer.id);
-        } else {
-          db.prepare('UPDATE boss_timers SET next_spawn_utc = NULL WHERE id = ?').run(timer.id);
+        for (const t of group.timers) {
+          db.prepare('UPDATE boss_timers SET reminder_sent = 1 WHERE id = ?').run(t.id);
         }
+      } else if (group.type === 'spawn') {
+        const content = `🚨 **${group.bossName}** ${channelsLabel} is spawning **NOW**! <@&${role.id}>`;
 
-        await renderStatusEmbed(timer.guild_id, timer.boss_name, client);
+        const sent = await channel.send(content);
+        scheduleCleanup(group.settings, group.guildId, channel.id, sent.id, now);
+
+        for (const t of group.timers) {
+          db.prepare('UPDATE boss_timers SET override_utc = NULL, last_spawn_utc = ?, reminder_sent = 0 WHERE id = ?').run(now, t.id);
+          if (t.interval_ms) {
+            db.prepare('UPDATE boss_timers SET next_spawn_utc = ? WHERE id = ?').run(now + t.interval_ms, t.id);
+          } else {
+            db.prepare('UPDATE boss_timers SET next_spawn_utc = NULL WHERE id = ?').run(t.id);
+          }
+        }
+        await renderStatusEmbed(group.guildId, group.bossName, client);
       }
     } catch (err) {
-      console.error(`[timers] ${timer.boss_name} Ch${timer.game_channel}:`, err.message);
+      console.error(`[timers] Grouped action error for ${group.bossName}:`, err.message);
     }
   }
 }
