@@ -62,19 +62,22 @@ async function tick(client) {
 
     if (!type) continue;
 
-    const key = `${timer.guild_id}_${timer.boss_name}_${target}_${type}`;
+    const key = `${timer.guild_id}_${target}_${type}`;
     if (!pendingActions[key]) {
       pendingActions[key] = {
         guildId: timer.guild_id,
-        bossName: timer.boss_name,
         target,
         type,
         settings,
-        channels: [],
+        bossMap: {},
         timers: []
       };
     }
-    pendingActions[key].channels.push(timer.game_channel);
+    
+    if (!pendingActions[key].bossMap[timer.boss_name]) {
+      pendingActions[key].bossMap[timer.boss_name] = [];
+    }
+    pendingActions[key].bossMap[timer.boss_name].push(timer.game_channel);
     pendingActions[key].timers.push(timer);
   }
 
@@ -86,13 +89,25 @@ async function tick(client) {
       if (!channel) continue;
       const role = await getOrCreateRole(guild);
 
-      // Sort channels so they appear nicely like "1, 2, 4"
-      group.channels.sort((a, b) => a.localeCompare(b));
-      const channelsLabel = group.channels.length > 1 ? `Ch ${group.channels.join(', ')}` : `Ch ${group.channels[0]}`;
+      const bossEntries = [];
+      for (const b of Object.keys(group.bossMap).sort()) {
+        const sortedChans = group.bossMap[b].sort((a, b) => a.localeCompare(b));
+        const chansLabel = sortedChans.length > 1 ? `Ch ${sortedChans.join(', ')}` : `Ch ${sortedChans[0]}`;
+        bossEntries.push(`**${b}** ${chansLabel}`);
+      }
+
+      function formatList(arr) {
+        if (arr.length === 1) return arr[0];
+        if (arr.length === 2) return `${arr[0]} and ${arr[1]}`;
+        return `${arr.slice(0, -1).join(', ')}, and ${arr[arr.length - 1]}`;
+      }
+
+      const combinedLabel = formatList(bossEntries);
+      const verb = group.timers.length > 1 ? 'are' : 'is';
 
       if (group.type === 'reminder') {
         const timestamp = `<t:${Math.floor(group.target / 1000)}:R>`;
-        const content = `⚠️ **${group.bossName}** ${channelsLabel} is spawning **${timestamp}**! <@&${role.id}>`;
+        const content = `⚠️ ${combinedLabel} ${verb} spawning **${timestamp}**! <@&${role.id}>`;
 
         const sent = await channel.send(content);
         scheduleCleanup(group.settings, group.guildId, channel.id, sent.id, now);
@@ -101,7 +116,7 @@ async function tick(client) {
           db.prepare('UPDATE boss_timers SET reminder_sent = 1 WHERE id = ?').run(t.id);
         }
       } else if (group.type === 'spawn') {
-        const content = `🚨 **${group.bossName}** ${channelsLabel} is spawning **NOW**! <@&${role.id}>`;
+        const content = `🚨 ${combinedLabel} ${verb} spawning **NOW**! <@&${role.id}>`;
 
         const sent = await channel.send(content);
         scheduleCleanup(group.settings, group.guildId, channel.id, sent.id, now);
@@ -114,10 +129,14 @@ async function tick(client) {
             db.prepare('UPDATE boss_timers SET next_spawn_utc = NULL WHERE id = ?').run(t.id);
           }
         }
-        await renderStatusEmbed(group.guildId, group.bossName, client);
+        // Update embeds for ALL bosses that spawned
+        const uniqueBosses = Object.keys(group.bossMap);
+        for (const b of uniqueBosses) {
+          await renderStatusEmbed(group.guildId, b, client);
+        }
       }
     } catch (err) {
-      console.error(`[timers] Grouped action error for ${group.bossName}:`, err.message);
+      console.error(`[timers] Grouped action error:`, err.message);
     }
   }
 }
