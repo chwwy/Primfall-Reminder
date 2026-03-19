@@ -62,7 +62,6 @@ async function registerCommands() {
     {
       name: 'status',
       description: 'View a summary of all boss timers',
-      default_member_permissions: ADMIN,
     },
   ];
 
