@@ -5,7 +5,7 @@ const {
 const moment = require('moment-timezone');
 const { db, seed, getOrCreateRole } = require('./database');
 const { renderStatusEmbed, renderAllStatusEmbeds, updateControlPanels } = require('./ui');
-const { THEME_COLOR, TIMEZONE_MAP } = require('./config');
+const { THEME_COLOR, TIMEZONE_MAP, BOSS_ORDER } = require('./config');
 
 // In-memory selection state per guild (for the timer panel dropdowns)
 const selections = {};
@@ -158,6 +158,14 @@ async function cmdCancelTimer(interaction, guildId) {
 async function cmdStatus(interaction, guildId) {
   const timers = db.prepare('SELECT * FROM boss_timers WHERE guild_id = ?').all(guildId);
   if (!timers.length) return interaction.reply({ content: 'Nothing tracked yet — run /setup first.', ephemeral: true });
+
+  // Sort by custom boss order, then channel
+  timers.sort((a, b) => {
+    const aOrder = BOSS_ORDER.indexOf(a.boss_name);
+    const bOrder = BOSS_ORDER.indexOf(b.boss_name);
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return String(a.game_channel).localeCompare(String(b.game_channel));
+  });
 
   const now  = Date.now();
   const lines = timers.map(t => {
