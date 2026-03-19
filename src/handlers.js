@@ -213,8 +213,10 @@ async function cmdStatus(interaction, guildId) {
   });
 
   const now  = Date.now();
-  const lines = timers.map(t => {
-    const icon   = t.enabled ? '✅' : '❌';
+  const lines = timers
+    .filter(t => BOSS_ORDER.includes(t.boss_name))
+    .map(t => {
+      const icon   = t.enabled ? '✅' : '❌';
     const target = t.override_utc || t.next_spawn_utc;
     const next   = target ? (target <= now ? 'Now' : `<t:${Math.floor(target / 1000)}:R>`) : '—';
     return `${icon} **${t.boss_name}** Ch${t.game_channel} → ${next}`;

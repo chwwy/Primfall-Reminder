@@ -1,5 +1,4 @@
 const BOSSES = {
-  'Kraken':           'world_boss',
   'Titanseal':        'world_boss',
   'Aero-Forge':       'world_boss',
   'Draconarch':       'world_boss',

@@ -1,6 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
 const { db, getOrCreateRole } = require('./database');
 const { renderStatusEmbed } = require('./ui');
+const { BOSS_ORDER } = require('./config');
 
 
 // ── Alert Cleanup ───────────────────────────────────────────────────────────────
@@ -45,6 +46,8 @@ async function tick(client) {
   const pendingActions = {};
 
   for (const timer of active) {
+    if (!BOSS_ORDER.includes(timer.boss_name)) continue;
+
     const target = timer.override_utc || timer.next_spawn_utc;
     if (!target) continue;
 
