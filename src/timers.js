@@ -10,14 +10,23 @@ async function cleanupExpiredAlerts(client) {
   const expired = db.prepare('SELECT * FROM alert_messages WHERE delete_at_utc <= ?').all(now);
 
   for (const row of expired) {
+    let successOrGone = false;
+
     try {
-      const guild   = await client.guilds.fetch(row.guild_id).catch(() => null);
-      const channel = guild && await guild.channels.fetch(row.channel_id).catch(() => null);
-      const message = channel && await channel.messages.fetch(row.message_id).catch(() => null);
-      if (message) await message.delete();
-    } catch (_) {
-      // message already gone — ignore
-    } finally {
+      const channel = await client.channels.fetch(row.channel_id);
+      const message = await channel.messages.fetch(row.message_id);
+      await message.delete();
+      successOrGone = true;
+    } catch (err) {
+      // 10008 = Unknown Message, 10003 = Unknown Channel, 50001 = Missing Access (bot kicked from channel)
+      if (err.code === 10008 || err.code === 10003 || err.code === 50001) {
+        successOrGone = true;
+      } else {
+        console.error(`[cleanup] Keeping row for ${row.message_id} due to API error:`, err.message);
+      }
+    }
+
+    if (successOrGone) {
       db.prepare('DELETE FROM alert_messages WHERE id = ?').run(row.id);
     }
   }
