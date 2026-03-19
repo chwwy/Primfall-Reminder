@@ -77,10 +77,27 @@ async function cmdSetup(interaction, guildId) {
     }
   }
 
-  // Wipe previous messages from panel channels
-  for (const ch of [toggleCh, panelCh, statusCh]) {
-    const msgs = await ch.messages.fetch({ limit: 100 }).catch(() => null);
-    if (msgs?.size) await ch.bulkDelete(msgs, true).catch(() => {});
+  // Wipe previously tracked messages
+  const oldSettings = db.prepare('SELECT * FROM server_settings WHERE guild_id = ?').get(guildId);
+  if (oldSettings) {
+    const toDelete = [
+      { ch: oldSettings.toggle_channel_id, msg: oldSettings.toggle_message_id },
+      { ch: oldSettings.control_panel_channel_id, msg: oldSettings.control_panel_message_id },
+      { ch: oldSettings.control_panel_channel_id, msg: oldSettings.timer_panel_message_id }
+    ];
+    const oldBosses = db.prepare('SELECT status_message_id FROM bosses WHERE guild_id = ? AND status_message_id IS NOT NULL').all(guildId);
+    for (const b of oldBosses) toDelete.push({ ch: oldSettings.status_channel_id, msg: b.status_message_id });
+
+    for (const item of toDelete) {
+      if (!item.ch || !item.msg) continue;
+      try {
+        const chan = await interaction.guild.channels.fetch(item.ch).catch(() => null);
+        if (chan) {
+          const m = await chan.messages.fetch(item.msg).catch(() => null);
+          if (m) await m.delete().catch(() => null);
+        }
+      } catch (err) {}
+    }
   }
 
   await seed(guildId);
@@ -112,12 +129,23 @@ async function cmdSetStatus(interaction, guildId) {
   await interaction.deferReply({ ephemeral: true });
   const ch = interaction.options.getChannel('channel');
 
+  const oldSettings = db.prepare('SELECT * FROM server_settings WHERE guild_id = ?').get(guildId);
+  if (oldSettings && oldSettings.status_channel_id) {
+    const oldBosses = db.prepare('SELECT status_message_id FROM bosses WHERE guild_id = ? AND status_message_id IS NOT NULL').all(guildId);
+    for (const b of oldBosses) {
+      try {
+        const chan = await interaction.guild.channels.fetch(oldSettings.status_channel_id).catch(() => null);
+        if (chan) {
+          const m = await chan.messages.fetch(b.status_message_id).catch(() => null);
+          if (m) await m.delete().catch(() => null);
+        }
+      } catch (err) {}
+    }
+  }
+
   await seed(guildId);
   db.prepare('UPDATE server_settings SET status_channel_id = ? WHERE guild_id = ?').run(ch.id, guildId);
   db.prepare('UPDATE bosses SET status_message_id = NULL WHERE guild_id = ?').run(guildId);
-
-  const msgs = await ch.messages.fetch({ limit: 100 }).catch(() => null);
-  if (msgs?.size) await ch.bulkDelete(msgs, true).catch(() => {});
 
   await renderAllStatusEmbeds(guildId, interaction.client);
   await interaction.editReply(`Status channel set to <#${ch.id}>.`);
