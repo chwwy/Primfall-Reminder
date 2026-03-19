@@ -110,10 +110,7 @@ async function tick(client) {
           db.prepare('UPDATE boss_timers SET reminder_sent = 1 WHERE id = ?').run(t.id);
         }
       } else if (group.type === 'spawn') {
-        const content = `🚨 ${combinedLabel} ${verb} spawning **NOW**! <@&${role.id}>`;
-
-        const sent = await channel.send(content);
-        scheduleCleanup(group.settings, group.guildId, channel.id, sent.id, now);
+        // Skip pinging the channel again for the actual spawn, just update the DB internals
 
         for (const t of group.timers) {
           db.prepare('UPDATE boss_timers SET override_utc = NULL, last_spawn_utc = ?, reminder_sent = 0 WHERE id = ?').run(now, t.id);
