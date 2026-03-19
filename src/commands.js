@@ -39,6 +39,7 @@ async function registerCommands() {
         { type: 3, name: 'channel',     description: 'Game channel',                     required: true, choices: channelChoices },
         { type: 3, name: 'spawn_time',  description: '24h time (e.g. 15:00 or 23:00)',   required: true },
         { type: 3, name: 'timezone',    description: 'Timezone',                         required: true, choices: tzChoices },
+        { type: 3, name: 'spawn_date',  description: 'Date (MM/DD/YYYY) - optional',     required: false },
       ],
     },
     {

@@ -19,16 +19,32 @@ function resolveTimezone(input) {
   return TIMEZONE_MAP[input.toUpperCase()] || 'UTC';
 }
 
-function parseSpawnTime(timeStr, tzName) {
+function parseSpawnTime(timeStr, tzName, dateStr) {
   const [hh, mm, ss] = timeStr.split(':').map(Number);
   if (isNaN(hh) || isNaN(mm)) return null;
 
   const now = moment().tz(tzName);
-  let target = moment.tz(
-    { year: now.year(), month: now.month(), date: now.date(), hour: hh, minute: mm, second: ss || 0 },
-    tzName,
-  );
-  if (target.isBefore(now)) target.add(1, 'day');
+  let target;
+
+  if (dateStr) {
+    const parts = dateStr.split(/[-/]/).map(Number);
+    if (parts.length < 2) return null;
+    const [month, day, yearStr] = parts;
+    let year = yearStr || now.year();
+    if (year < 100) year += 2000;
+
+    target = moment.tz(
+      { year, month: month - 1, date: day, hour: hh, minute: mm, second: ss || 0 },
+      tzName,
+    );
+  } else {
+    target = moment.tz(
+      { year: now.year(), month: now.month(), date: now.date(), hour: hh, minute: mm, second: ss || 0 },
+      tzName,
+    );
+    if (target.isBefore(now)) target.add(1, 'day');
+  }
+
   return target.valueOf();
 }
 
@@ -127,11 +143,12 @@ async function cmdOverride(interaction, guildId) {
   const channel = interaction.options.getString('channel');
   const time    = interaction.options.getString('spawn_time');
   const tz      = interaction.options.getString('timezone');
+  const dateStr = interaction.options.getString('spawn_date');
 
   await seed(guildId);
 
   const tzName   = resolveTimezone(tz);
-  const spawnMs  = parseSpawnTime(time, tzName);
+  const spawnMs  = parseSpawnTime(time, tzName, dateStr);
   if (!spawnMs) return interaction.reply({ content: 'Invalid time format.', ephemeral: true });
 
   const row  = db.prepare('SELECT interval_ms FROM boss_timers WHERE guild_id = ? AND boss_name = ? AND game_channel = ?').get(guildId, boss, channel);
@@ -217,6 +234,7 @@ async function onButton(interaction) {
       .addComponents(
         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('spawn_time').setLabel('24h time (e.g. 15:00)').setStyle(TextInputStyle.Short).setRequired(true)),
         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('timezone').setLabel('Timezone (ET / CT / MT / PT)').setStyle(TextInputStyle.Short).setRequired(true).setValue('ET')),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('spawn_date').setLabel('Date MM/DD/YYYY (Optional)').setStyle(TextInputStyle.Short).setRequired(false)),
       );
     return interaction.showModal(modal);
   }
@@ -303,7 +321,8 @@ async function onModalSubmit(interaction) {
     const { boss, channel } = parseModalId(id);
     const timeStr = interaction.fields.getTextInputValue('spawn_time');
     const tzName  = resolveTimezone(interaction.fields.getTextInputValue('timezone'));
-    const spawnMs = parseSpawnTime(timeStr, tzName);
+    const dateStr = interaction.fields.fields.has('spawn_date') ? interaction.fields.getTextInputValue('spawn_date') : null;
+    const spawnMs = parseSpawnTime(timeStr, tzName, dateStr);
     if (!spawnMs) return interaction.reply({ content: 'Invalid time.', ephemeral: true });
 
     const row  = db.prepare('SELECT interval_ms FROM boss_timers WHERE guild_id = ? AND boss_name = ? AND game_channel = ?').get(interaction.guildId, boss, channel);
