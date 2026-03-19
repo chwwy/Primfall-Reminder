@@ -133,7 +133,7 @@ async function cmdSetBoss(interaction, guildId) {
   const ms   = hours * 3_600_000;
   const next = Date.now() + ms;
 
-  db.prepare('UPDATE boss_timers SET interval_ms = ?, next_spawn_utc = ? WHERE guild_id = ? AND boss_name = ? AND game_channel = ?').run(ms, next, guildId, boss, channel);
+  db.prepare('UPDATE boss_timers SET interval_ms = ?, next_spawn_utc = ?, reminder_sent = 0 WHERE guild_id = ? AND boss_name = ? AND game_channel = ?').run(ms, next, guildId, boss, channel);
   await renderStatusEmbed(guildId, boss, interaction.client);
   await interaction.reply({ content: `**${boss}** Ch${channel} → every ${hours}h.`, ephemeral: true });
 }
@@ -154,7 +154,7 @@ async function cmdOverride(interaction, guildId) {
   const row  = db.prepare('SELECT interval_ms FROM boss_timers WHERE guild_id = ? AND boss_name = ? AND game_channel = ?').get(guildId, boss, channel);
   const next = row?.interval_ms ? spawnMs + 3_600_000 + row.interval_ms : null;
 
-  db.prepare('UPDATE boss_timers SET override_utc = ?, last_spawn_utc = ?, next_spawn_utc = COALESCE(?, next_spawn_utc) WHERE guild_id = ? AND boss_name = ? AND game_channel = ?')
+  db.prepare('UPDATE boss_timers SET override_utc = ?, last_spawn_utc = ?, next_spawn_utc = COALESCE(?, next_spawn_utc), reminder_sent = 0 WHERE guild_id = ? AND boss_name = ? AND game_channel = ?')
     .run(spawnMs, spawnMs, next, guildId, boss, channel);
 
   await renderStatusEmbed(guildId, boss, interaction.client);
@@ -311,7 +311,7 @@ async function onModalSubmit(interaction) {
     const ms  = hours * 3_600_000;
     const next = Date.now() + ms;
 
-    db.prepare('UPDATE boss_timers SET interval_ms = ?, next_spawn_utc = ? WHERE guild_id = ? AND boss_name = ? AND game_channel = ?').run(ms, next, interaction.guildId, boss, channel);
+    db.prepare('UPDATE boss_timers SET interval_ms = ?, next_spawn_utc = ?, reminder_sent = 0 WHERE guild_id = ? AND boss_name = ? AND game_channel = ?').run(ms, next, interaction.guildId, boss, channel);
     await interaction.deferUpdate();
     await renderStatusEmbed(interaction.guildId, boss, interaction.client);
     return interaction.followUp({ content: `**${boss}** Ch${channel} → every ${hours}h.`, ephemeral: true });
@@ -328,7 +328,7 @@ async function onModalSubmit(interaction) {
     const row  = db.prepare('SELECT interval_ms FROM boss_timers WHERE guild_id = ? AND boss_name = ? AND game_channel = ?').get(interaction.guildId, boss, channel);
     const next = row?.interval_ms ? spawnMs + 3_600_000 + row.interval_ms : null;
 
-    db.prepare('UPDATE boss_timers SET override_utc = ?, last_spawn_utc = ?, next_spawn_utc = COALESCE(?, next_spawn_utc) WHERE guild_id = ? AND boss_name = ? AND game_channel = ?')
+    db.prepare('UPDATE boss_timers SET override_utc = ?, last_spawn_utc = ?, next_spawn_utc = COALESCE(?, next_spawn_utc), reminder_sent = 0 WHERE guild_id = ? AND boss_name = ? AND game_channel = ?')
       .run(spawnMs, spawnMs, next, interaction.guildId, boss, channel);
 
     await interaction.deferUpdate();
