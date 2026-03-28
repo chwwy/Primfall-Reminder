@@ -180,7 +180,7 @@ async function cmdOverride(interaction, guildId) {
   if (!spawnMs) return interaction.reply({ content: 'Invalid time format.', ephemeral: true });
 
   const row  = db.prepare('SELECT interval_ms FROM boss_timers WHERE guild_id = ? AND boss_name = ? AND game_channel = ?').get(guildId, boss, channel);
-  const next = row?.interval_ms ? spawnMs + 3_600_000 + row.interval_ms : null;
+  const next = row?.interval_ms ? spawnMs + row.interval_ms : null;
 
   db.prepare('UPDATE boss_timers SET override_utc = ?, last_spawn_utc = ?, next_spawn_utc = COALESCE(?, next_spawn_utc), reminder_sent = 0 WHERE guild_id = ? AND boss_name = ? AND game_channel = ?')
     .run(spawnMs, spawnMs, next, guildId, boss, channel);
@@ -356,7 +356,7 @@ async function onModalSubmit(interaction) {
     if (!spawnMs) return interaction.reply({ content: 'Invalid time.', ephemeral: true });
 
     const row  = db.prepare('SELECT interval_ms FROM boss_timers WHERE guild_id = ? AND boss_name = ? AND game_channel = ?').get(interaction.guildId, boss, channel);
-    const next = row?.interval_ms ? spawnMs + 3_600_000 + row.interval_ms : null;
+    const next = row?.interval_ms ? spawnMs + row.interval_ms : null;
 
     db.prepare('UPDATE boss_timers SET override_utc = ?, last_spawn_utc = ?, next_spawn_utc = COALESCE(?, next_spawn_utc), reminder_sent = 0 WHERE guild_id = ? AND boss_name = ? AND game_channel = ?')
       .run(spawnMs, spawnMs, next, interaction.guildId, boss, channel);

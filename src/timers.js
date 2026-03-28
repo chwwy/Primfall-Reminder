@@ -118,7 +118,7 @@ async function tick(client) {
         for (const t of group.timers) {
           db.prepare('UPDATE boss_timers SET override_utc = NULL, last_spawn_utc = ?, reminder_sent = 0 WHERE id = ?').run(now, t.id);
           if (t.interval_ms) {
-            db.prepare('UPDATE boss_timers SET next_spawn_utc = ? WHERE id = ?').run(now + 3_600_000 + t.interval_ms, t.id);
+            db.prepare('UPDATE boss_timers SET next_spawn_utc = ? WHERE id = ?').run(now + t.interval_ms, t.id);
           } else {
             db.prepare('UPDATE boss_timers SET next_spawn_utc = NULL WHERE id = ?').run(t.id);
           }

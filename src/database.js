@@ -60,7 +60,19 @@ db.exec(`
     message_id    TEXT,
     delete_at_utc INTEGER
   );
+
+  CREATE TABLE IF NOT EXISTS migrations (
+    name TEXT PRIMARY KEY
+  );
 `);
+
+// ── Migrations ──────────────────────────────────────────────────────────────────
+
+const hasRun = db.prepare('SELECT 1 FROM migrations WHERE name = ?').get('remove_1h_offset');
+if (!hasRun) {
+  db.prepare('UPDATE boss_timers SET next_spawn_utc = next_spawn_utc - 3600000 WHERE next_spawn_utc IS NOT NULL AND interval_ms IS NOT NULL').run();
+  db.prepare('INSERT INTO migrations (name) VALUES (?)').run('remove_1h_offset');
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────────
 
