@@ -1,11 +1,10 @@
 const { REST, Routes } = require('discord.js');
-const { BOSSES, GAME_CHANNELS } = require('./config');
+const { BOSSES } = require('./config');
 
 const ADMIN = '32'; // MANAGE_SERVER permission flag
 
 async function registerCommands() {
   const bossChoices   = Object.keys(BOSSES).map(b => ({ name: b, value: b }));
-  const channelChoices = GAME_CHANNELS.map(c => ({ name: `Channel ${c}`, value: c }));
   const tzChoices     = ['ET', 'CT', 'MT', 'PT'].map(t => ({ name: t, value: t }));
 
   const commands = [
@@ -25,7 +24,6 @@ async function registerCommands() {
       default_member_permissions: ADMIN,
       options: [
         { type: 3, name: 'boss_name',      description: 'Boss',               required: true, choices: bossChoices },
-        { type: 3, name: 'channel',         description: 'Game channel',       required: true, choices: channelChoices },
         { type: 4, name: 'interval_hours',  description: 'Repeat every N hrs', required: true },
         { type: 3, name: 'timezone',        description: 'Timezone',           required: true, choices: tzChoices },
       ],
@@ -36,7 +34,6 @@ async function registerCommands() {
       default_member_permissions: ADMIN,
       options: [
         { type: 3, name: 'boss_name',  description: 'Boss',                             required: true, choices: bossChoices },
-        { type: 3, name: 'channel',     description: 'Game channel',                     required: true, choices: channelChoices },
         { type: 3, name: 'spawn_time',  description: '24h time (e.g. 15:00 or 23:00)',   required: true },
         { type: 3, name: 'timezone',    description: 'Timezone',                         required: true, choices: tzChoices },
         { type: 3, name: 'spawn_date',  description: 'Date (MM/DD/YYYY) - optional',     required: false },
@@ -56,7 +53,6 @@ async function registerCommands() {
       default_member_permissions: ADMIN,
       options: [
         { type: 3, name: 'boss_name', description: 'Boss',         required: true, choices: bossChoices },
-        { type: 3, name: 'channel',    description: 'Game channel', required: true, choices: channelChoices },
       ],
     },
     {

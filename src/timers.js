@@ -78,9 +78,8 @@ async function tick(client) {
     }
     
     if (!pendingActions[key].bossMap[timer.boss_name]) {
-      pendingActions[key].bossMap[timer.boss_name] = [];
+      pendingActions[key].bossMap[timer.boss_name] = true;
     }
-    pendingActions[key].bossMap[timer.boss_name].push(timer.game_channel);
     pendingActions[key].timers.push(timer);
   }
 
@@ -94,9 +93,7 @@ async function tick(client) {
 
       const bossEntries = [];
       for (const b of Object.keys(group.bossMap).sort()) {
-        const sortedChans = group.bossMap[b].sort((a, b) => a.localeCompare(b));
-        const chansLabel = sortedChans.length > 1 ? `Ch ${sortedChans.join(', ')}` : `Ch ${sortedChans[0]}`;
-        bossEntries.push(`**${b}** ${chansLabel}`);
+        bossEntries.push(`**${b}**`);
       }
 
       const combinedLabel = bossEntries.join(' | ');

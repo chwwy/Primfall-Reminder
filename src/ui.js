@@ -3,7 +3,7 @@ const {
   StringSelectMenuBuilder, AttachmentBuilder,
 } = require('discord.js');
 const { db } = require('./database');
-const { BOSSES, BOSS_ORDER, GAME_CHANNELS, THEME_COLOR } = require('./config');
+const { BOSSES, BOSS_ORDER, THEME_COLOR } = require('./config');
 
 // ── Helpers ─────────────────────────────────────────────────────────────────────
 
@@ -15,20 +15,18 @@ function discordTimestamp(ms, style = 'F') {
   return `<t:${Math.floor(ms / 1000)}:${style}>`;
 }
 
-function formatSpawnField(rows, field) {
-  return GAME_CHANNELS.map(ch => {
-    const row = rows.find(r => r.game_channel === ch) || {};
+function formatSpawnField(row, field) {
+  if (!row) return '—';
 
-    if (field === 'last') {
-      if (!row.last_spawn_utc) return `**Ch ${ch}:** —`;
-      return `**Ch ${ch}:** ${discordTimestamp(row.last_spawn_utc)} (${discordTimestamp(row.last_spawn_utc, 'R')})`;
-    }
+  if (field === 'last') {
+    if (!row.last_spawn_utc) return '—';
+    return `${discordTimestamp(row.last_spawn_utc)} (${discordTimestamp(row.last_spawn_utc, 'R')})`;
+  }
 
-    const target = row.override_utc || row.next_spawn_utc;
-    if (!target) return `**Ch ${ch}:** —`;
-    if (target <= Date.now()) return `**Ch ${ch}:** Spawning…`;
-    return `**Ch ${ch}:** ${discordTimestamp(target)} (${discordTimestamp(target, 'R')})`;
-  }).join('\n');
+  const target = row.override_utc || row.next_spawn_utc;
+  if (!target) return '—';
+  if (target <= Date.now()) return 'Spawning…';
+  return `${discordTimestamp(target)} (${discordTimestamp(target, 'R')})`;
 }
 
 // ── Status Embeds ───────────────────────────────────────────────────────────────
@@ -54,8 +52,8 @@ async function renderStatusEmbed(guildId, bossName, client) {
     .setThumbnail(`attachment://${slug}.png`)
     .setColor(THEME_COLOR)
     .addFields(
-      { name: 'Last Spawn',  value: formatSpawnField(timers, 'last'), inline: true },
-      { name: 'Next Spawn',  value: formatSpawnField(timers, 'next'), inline: true },
+      { name: 'Last Spawn',  value: formatSpawnField(timers[0], 'last'), inline: true },
+      { name: 'Next Spawn',  value: formatSpawnField(timers[0], 'next'), inline: true },
     )
     .setFooter({ text: 'Primfall Reminder' });
 
@@ -151,20 +149,13 @@ async function postTimerPanel(channel, settings, guildId) {
       .addOptions(Object.keys(BOSSES).map(b => ({ label: b, value: b }))),
   );
 
-  const channelMenu = new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId('cp_timer_channel')
-      .setPlaceholder('2 — Select a channel')
-      .addOptions(GAME_CHANNELS.map(c => ({ label: `Channel ${c}`, value: c }))),
-  );
-
   const actions = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('cp_set_interval').setLabel('Set Interval').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('cp_set_override').setLabel('Set Spawn Time').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId('cp_cancel_timer').setLabel('Cancel Timer').setStyle(ButtonStyle.Danger),
   );
 
-  const payload = { embeds: [embed], components: [bossMenu, channelMenu, actions] };
+  const payload = { embeds: [embed], components: [bossMenu, actions] };
   await upsertMessage(channel, settings.timer_panel_message_id, payload, (id) => {
     db.prepare('UPDATE server_settings SET timer_panel_message_id = ? WHERE guild_id = ?').run(id, guildId);
   });

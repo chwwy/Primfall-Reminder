@@ -11,7 +11,7 @@ const { THEME_COLOR, TIMEZONE_MAP, BOSS_ORDER } = require('./config');
 const selections = {};
 
 function getSelection(guildId) {
-  if (!selections[guildId]) selections[guildId] = { boss: null, channel: null };
+  if (!selections[guildId]) selections[guildId] = { boss: null };
   return selections[guildId];
 }
 
@@ -153,7 +153,7 @@ async function cmdSetStatus(interaction, guildId) {
 
 async function cmdSetBoss(interaction, guildId) {
   const boss    = interaction.options.getString('boss_name');
-  const channel = interaction.options.getString('channel');
+  const channel = '1';
   const hours   = interaction.options.getInteger('interval_hours');
 
   await seed(guildId);
@@ -163,12 +163,12 @@ async function cmdSetBoss(interaction, guildId) {
 
   db.prepare('UPDATE boss_timers SET interval_ms = ?, next_spawn_utc = ?, reminder_sent = 0 WHERE guild_id = ? AND boss_name = ? AND game_channel = ?').run(ms, next, guildId, boss, channel);
   await renderStatusEmbed(guildId, boss, interaction.client);
-  await interaction.reply({ content: `**${boss}** Ch${channel} → every ${hours}h.`, ephemeral: true });
+  await interaction.reply({ content: `**${boss}** → every ${hours}h.`, ephemeral: true });
 }
 
 async function cmdOverride(interaction, guildId) {
   const boss    = interaction.options.getString('boss_name');
-  const channel = interaction.options.getString('channel');
+  const channel = '1';
   const time    = interaction.options.getString('spawn_time');
   const tz      = interaction.options.getString('timezone');
   const dateStr = interaction.options.getString('spawn_date');
@@ -186,30 +186,28 @@ async function cmdOverride(interaction, guildId) {
     .run(spawnMs, spawnMs, next, guildId, boss, channel);
 
   await renderStatusEmbed(guildId, boss, interaction.client);
-  await interaction.reply({ content: `**${boss}** Ch${channel} overridden to ${time} ${tz}.`, ephemeral: true });
+  await interaction.reply({ content: `**${boss}** overridden to ${time} ${tz}.`, ephemeral: true });
 }
 
 async function cmdCancelTimer(interaction, guildId) {
   const boss    = interaction.options.getString('boss_name');
-  const channel = interaction.options.getString('channel');
+  const channel = '1';
 
   db.prepare('UPDATE boss_timers SET override_utc = NULL, interval_ms = NULL, next_spawn_utc = NULL, reminder_sent = 0 WHERE guild_id = ? AND boss_name = ? AND game_channel = ?')
     .run(guildId, boss, channel);
 
   await renderStatusEmbed(guildId, boss, interaction.client);
-  await interaction.reply({ content: `Timers cancelled for **${boss}** Ch${channel}.`, ephemeral: true });
+  await interaction.reply({ content: `Timers cancelled for **${boss}**.`, ephemeral: true });
 }
 
 async function cmdStatus(interaction, guildId) {
   const timers = db.prepare('SELECT * FROM boss_timers WHERE guild_id = ?').all(guildId);
   if (!timers.length) return interaction.reply({ content: 'Nothing tracked yet — run /setup first.', ephemeral: true });
 
-  // Sort by custom boss order, then channel
   timers.sort((a, b) => {
     const aOrder = BOSS_ORDER.indexOf(a.boss_name);
     const bOrder = BOSS_ORDER.indexOf(b.boss_name);
-    if (aOrder !== bOrder) return aOrder - bOrder;
-    return String(a.game_channel).localeCompare(String(b.game_channel));
+    return aOrder - bOrder;
   });
 
   const now  = Date.now();
@@ -219,7 +217,7 @@ async function cmdStatus(interaction, guildId) {
       const icon   = t.enabled ? '✅' : '❌';
     const target = t.override_utc || t.next_spawn_utc;
     const next   = target ? (target <= now ? 'Now' : `<t:${Math.floor(target / 1000)}:R>`) : '—';
-    return `${icon} **${t.boss_name}** Ch${t.game_channel} → ${next}`;
+    return `${icon} **${t.boss_name}** → ${next}`;
   });
 
   const embed = new EmbedBuilder().setTitle('Timer Summary').setColor(THEME_COLOR).setDescription(lines.join('\n'));
@@ -247,20 +245,20 @@ async function onButton(interaction) {
   if (id === 'cp_set_reminder') return showModal(interaction, 'modal_global_reminder', 'Pre-Spawn Reminder', 'minutes', 'Minutes before spawn');
   if (id === 'cp_set_cleanup')  return showModal(interaction, 'modal_global_cleanup',  'Alert Cleanup',       'minutes', 'Minutes to keep alerts');
 
-  // Timer panel buttons require a boss + channel selection
+  // Timer panel buttons require a boss selection
   const state = getSelection(interaction.guildId);
-  if (!state.boss || !state.channel) {
-    return interaction.reply({ content: 'Select a boss and channel first.', ephemeral: true });
+  if (!state.boss) {
+    return interaction.reply({ content: 'Select a boss first.', ephemeral: true });
   }
 
   if (id === 'cp_set_interval') {
-    return showModal(interaction, `modal_interval_${state.boss}_${state.channel}`, `Interval — ${state.boss} Ch${state.channel}`, 'interval_hours', 'Interval in hours');
+    return showModal(interaction, `modal_interval_${state.boss}`, `Interval — ${state.boss}`, 'interval_hours', 'Interval in hours');
   }
 
   if (id === 'cp_set_override') {
     const modal = new ModalBuilder()
-      .setCustomId(`modal_override_${state.boss}_${state.channel}`)
-      .setTitle(`Spawn Time — ${state.boss} Ch${state.channel}`)
+      .setCustomId(`modal_override_${state.boss}`)
+      .setTitle(`Spawn Time — ${state.boss}`)
       .addComponents(
         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('spawn_time').setLabel('24h time (e.g. 15:00)').setStyle(TextInputStyle.Short).setRequired(true)),
         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('timezone').setLabel('Timezone (ET / CT / MT / PT)').setStyle(TextInputStyle.Short).setRequired(true).setValue('ET')),
@@ -271,9 +269,9 @@ async function onButton(interaction) {
 
   if (id === 'cp_cancel_timer') {
     db.prepare('UPDATE boss_timers SET override_utc = NULL, interval_ms = NULL, next_spawn_utc = NULL, reminder_sent = 0 WHERE guild_id = ? AND boss_name = ? AND game_channel = ?')
-      .run(interaction.guildId, state.boss, state.channel);
+      .run(interaction.guildId, state.boss, '1');
     await renderStatusEmbed(interaction.guildId, state.boss, interaction.client);
-    return interaction.reply({ content: `Cancelled **${state.boss}** Ch${state.channel}.`, ephemeral: true });
+    return interaction.reply({ content: `Cancelled **${state.boss}**.`, ephemeral: true });
   }
 }
 
@@ -300,13 +298,7 @@ async function onSelectMenu(interaction) {
   if (id === 'cp_timer_boss') {
     state.boss = interaction.values[0];
     await interaction.deferUpdate();
-    return interaction.followUp({ content: `Boss: **${state.boss}**. Now pick a channel.`, ephemeral: true });
-  }
-
-  if (id === 'cp_timer_channel') {
-    state.channel = interaction.values[0];
-    await interaction.deferUpdate();
-    return interaction.followUp({ content: `Channel: **${state.channel}**. Use the buttons below.`, ephemeral: true });
+    return interaction.followUp({ content: `Boss: **${state.boss}**. Use the buttons below.`, ephemeral: true });
   }
 }
 
@@ -334,7 +326,8 @@ async function onModalSubmit(interaction) {
   }
 
   if (id.startsWith('modal_interval_')) {
-    const { boss, channel } = parseModalId(id);
+    const boss = parseModalId(id);
+    const channel = '1';
     const hours = parseFloat(interaction.fields.getTextInputValue('interval_hours'));
     if (isNaN(hours)) return interaction.reply({ content: 'Enter a number.', ephemeral: true });
 
@@ -344,11 +337,12 @@ async function onModalSubmit(interaction) {
     db.prepare('UPDATE boss_timers SET interval_ms = ?, next_spawn_utc = ?, reminder_sent = 0 WHERE guild_id = ? AND boss_name = ? AND game_channel = ?').run(ms, next, interaction.guildId, boss, channel);
     await interaction.deferUpdate();
     await renderStatusEmbed(interaction.guildId, boss, interaction.client);
-    return interaction.followUp({ content: `**${boss}** Ch${channel} → every ${hours}h.`, ephemeral: true });
+    return interaction.followUp({ content: `**${boss}** → every ${hours}h.`, ephemeral: true });
   }
 
   if (id.startsWith('modal_override_')) {
-    const { boss, channel } = parseModalId(id);
+    const boss = parseModalId(id);
+    const channel = '1';
     const timeStr = interaction.fields.getTextInputValue('spawn_time');
     const tzName  = resolveTimezone(interaction.fields.getTextInputValue('timezone'));
     const dateStr = interaction.fields.fields.has('spawn_date') ? interaction.fields.getTextInputValue('spawn_date') : null;
@@ -363,15 +357,14 @@ async function onModalSubmit(interaction) {
 
     await interaction.deferUpdate();
     await renderStatusEmbed(interaction.guildId, boss, interaction.client);
-    return interaction.followUp({ content: `**${boss}** Ch${channel} → ${timeStr}.`, ephemeral: true });
+    return interaction.followUp({ content: `**${boss}** → ${timeStr}.`, ephemeral: true });
   }
 }
 
 function parseModalId(customId) {
   const parts   = customId.split('_');
-  const channel = parts.pop();
   const boss    = parts.slice(2).join('_');
-  return { boss, channel };
+  return boss;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────

@@ -10,8 +10,6 @@ const BOSSES = {
 
 const BOSS_ORDER = Object.keys(BOSSES);
 
-const GAME_CHANNELS = ['1', '2', '4'];
-
 const THEME_COLOR = '#FFD700';
 
 const TIMEZONE_MAP = {
@@ -21,4 +19,4 @@ const TIMEZONE_MAP = {
   PT: 'America/Los_Angeles',
 };
 
-module.exports = { BOSSES, BOSS_ORDER, GAME_CHANNELS, THEME_COLOR, TIMEZONE_MAP };
+module.exports = { BOSSES, BOSS_ORDER, THEME_COLOR, TIMEZONE_MAP };

@@ -1,7 +1,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
-const { BOSSES, GAME_CHANNELS } = require('./config');
+const { BOSSES } = require('./config');
 
 // Resolve database directory — persistent volume on Railway, project root locally
 const dbDir = process.env.RAILWAY_PROJECT_NAME
@@ -74,6 +74,12 @@ if (!hasRun) {
   db.prepare('INSERT INTO migrations (name) VALUES (?)').run('remove_1h_offset');
 }
 
+const hasRunChannelsMerge = db.prepare('SELECT 1 FROM migrations WHERE name = ?').get('merge_channels');
+if (!hasRunChannelsMerge) {
+  db.prepare("DELETE FROM boss_timers WHERE game_channel != '1'").run();
+  db.prepare('INSERT INTO migrations (name) VALUES (?)').run('merge_channels');
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────────
 
 function seed(guildId) {
@@ -81,9 +87,7 @@ function seed(guildId) {
 
   for (const [name, category] of Object.entries(BOSSES)) {
     db.prepare('INSERT OR IGNORE INTO bosses (guild_id, name, category) VALUES (?, ?, ?)').run(guildId, name, category);
-    for (const ch of GAME_CHANNELS) {
-      db.prepare('INSERT OR IGNORE INTO boss_timers (guild_id, boss_name, game_channel, enabled) VALUES (?, ?, ?, 1)').run(guildId, name, ch);
-    }
+    db.prepare('INSERT OR IGNORE INTO boss_timers (guild_id, boss_name, game_channel, enabled) VALUES (?, ?, ?, 1)').run(guildId, name, '1');
   }
 }
 
