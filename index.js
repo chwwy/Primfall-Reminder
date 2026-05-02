@@ -5,6 +5,7 @@ const { registerCommands } = require('./src/commands');
 const { onCommand, onButton, onSelectMenu, onModalSubmit } = require('./src/handlers');
 const { tick } = require('./src/timers');
 const { renderAllStatusEmbeds, updateControlPanels } = require('./src/ui');
+const { handleMessageCreate } = require('./src/translate');
 
 if (!process.env.DISCORD_TOKEN) {
   console.error('DISCORD_TOKEN is not set. Add it to .env or your host\'s secrets.');
@@ -12,7 +13,7 @@ if (!process.env.DISCORD_TOKEN) {
 }
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMembers],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMembers, GatewayIntentBits.MessageContent],
   partials: [Partials.Message, Partials.Channel, Partials.GuildMember],
 });
 
@@ -45,6 +46,10 @@ client.on('interactionCreate', async (interaction) => {
       ? interaction.followUp(reply).catch(() => {})
       : interaction.reply(reply).catch(() => {});
   }
+});
+
+client.on('messageCreate', async (message) => {
+  await handleMessageCreate(message);
 });
 
 client.login(process.env.DISCORD_TOKEN);
