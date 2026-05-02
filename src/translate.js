@@ -27,16 +27,16 @@ async function handleMessageCreate(message) {
     if (!referencedMessage || !referencedMessage.content) return; // Nothing to translate
 
     // Determine direction
-    // If the person who triggered the bot has the role ID 1500146371557064766 -> EN to PT-BR
-    let direction = 'pt-br to en';
+    // If the person who triggered the bot has the role ID 1500146371557064766 -> EN to ES
+    let direction = 'es to en';
     const hasRole = message.member && message.member.roles.cache.has(TRANSLATE_ROLE_ID);
     if (hasRole) {
-      direction = 'en to pt-br';
+      direction = 'en to es';
     }
 
-    const directionPrompt = direction === 'en to pt-br'
-      ? 'Translate from English to Portuguese (BR).'
-      : 'Translate from Portuguese (BR) to English.';
+    const directionPrompt = direction === 'en to es'
+      ? 'Translate from English to Spanish.'
+      : 'Translate from Spanish to English.';
 
     const model = genAI.getGenerativeModel({
       model: 'gemini-2.5-flash-lite',
